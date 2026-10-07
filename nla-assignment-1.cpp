@@ -21,8 +21,8 @@ using Eigen::MatrixXd;
 using Eigen::VectorXd;
 using RowMatrixXd = Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>; 
 
-// COMPILE WITH mpicxx -DUSE_MPI -I${mkLisInc} -I${mkEigenInc} -I ./eigen-image.cpp nla-assignment-1.cpp -o challenge -L${mkLisLib} -llis
-// RUN WITH mpirun -n 1 challenge
+// COMPILE WITH `mpicxx -DUSE_MPI -I${mkLisInc} -I${mkEigenInc} nla-assignment-1.cpp -o challenge -L${mkLisLib} -llis -O2`
+// RUN WITH `mpirun -n 1 challenge` or `./challenge`
 RowMatrixXd load_image(const char *path) { 
 	int desired_channels = 1;
 
@@ -86,15 +86,15 @@ Eigen::SparseMatrix<double> build_convolution_matrix(const MatrixXd &filter, Eig
 		for (auto i = -row_mid; i <= row_mid; i++) {
 			for (auto j = -col_mid; j <= col_mid; j++) {
 
-				Eigen::Index nr = k / cols + i; //FIXED
-				Eigen::Index nc = k % cols + j; //FIXED
+				Eigen::Index nr = k / cols + i; 
+				Eigen::Index nc = k % cols + j; 
 
 				if (nr < 0 || nr >= rows || nc < 0 || nc >= cols) 
 					continue;
 
 				double tmp = filter(i + row_mid, j + col_mid);
 				if (tmp != 0.0)
-					A.insert(k, k + (i * stride) + j) = tmp; //FIXED
+					A.insert(k, k + (i * stride) + j) = tmp; 
 			}
 		}
 	}
@@ -152,38 +152,26 @@ std::pair<int,double> solve_lis_file_output(const char *matrix_path, const char 
 
 // Solves A x = b for SPD A with Conjugate Gradient
 // Returns <solution, iteration_count, relative residual>
-std::tuple<VectorXd, int, double> solve_eigen_spd(const Eigen::SparseMatrix<double> &A,
-	const VectorXd &b, double tol) {
-	Eigen::ConjugateGradient<Eigen::SparseMatrix<double>, Eigen::Lower | Eigen::Upper> solver;
-	solver.setTolerance(tol);
-	solver.compute(A);
-	VectorXd x = solver.solve(b);
+// std::tuple<VectorXd, int, double> solve_eigen_spd(const Eigen::SparseMatrix<double> &A,
+// 	const VectorXd &b, double tol) {
+// 	Eigen::ConjugateGradient<Eigen::SparseMatrix<double>, Eigen::Lower | Eigen::Upper> solver;
+// 	solver.setTolerance(tol);
+// 	solver.compute(A);
+// 	VectorXd x = solver.solve(b);
 
-	return {x, static_cast<int>(solver.iterations()), solver.error()};
-}
+// 	return {x, static_cast<int>(solver.iterations()), solver.error()};
+// }
 
-// Solves A x = b with BiCGSTAB 
+// Solves A x = b with BiCGSTAB, preconditioned with the default preconditioner
 // Returns <solution, iteration_count, relative residual>
 std::tuple<VectorXd, int, double> solve_eigen_bicgstab(const Eigen::SparseMatrix<double> &A,
 	const VectorXd &b, double tol) {
-	Eigen::BiCGSTAB<Eigen::SparseMatrix<double, Eigen::RowMajor>> solver;
+	Eigen::BiCGSTAB<Eigen::SparseMatrix<double>> solver;
 	solver.setTolerance(tol);
 	solver.compute(A);
 	VectorXd x = solver.solve(b);
 
 	return {x, static_cast<int>(solver.iterations()), solver.error()};
-}
-
-// Solves A x = b with a direct LDL^T factorization. Only valid for symmetric A:
-// it reads just the lower triangle and assumes the upper one mirrors it.
-// Returns <solution, iteration_count (always 0, direct method), relative residual>.
-std::tuple<VectorXd, int, double> solve_eigen_ldlt(const Eigen::SparseMatrix<double> &A,
-	const VectorXd &b) {
-	Eigen::SimplicialLDLT<Eigen::SparseMatrix<double>> solver;
-	solver.compute(A);
-	VectorXd x = solver.solve(b);
-
-	return {x, 0, (b - A * x).norm() / b.norm()};
 }
 
 VectorXd read_mtx_vector_lis(const char *path) {
@@ -239,6 +227,10 @@ int main() {
 	RowMatrixXd noise = RowMatrixXd::Random(rows, cols) * noise_scale; 
 
 	RowMatrixXd noisy_image = input_image + noise; 
+
+	noisy_image = noisy_image.unaryExpr([](double val) -> double {
+		return static_cast<unsigned char>(std::clamp(val, 0.0, 255.0));
+	});
 	constexpr auto noisy_image_path = "./artifacts/noisy.png";
 	save_image(noisy_image, noisy_image_path);
 	std::cout << "- Task 2: saved to " << noisy_image_path << "\n";
@@ -301,8 +293,7 @@ int main() {
 	char lis_options[] = "-i bicgstab -p ilu";
 	auto [lis_iterations, lis_residual] =
 		solve_lis_file_output(sh1_mtx_path, w_lis_path, x_lis_path, lis_options, 1e-12);
-	std::cout << "- Task 8: LIS bicgstab + ilu, iterations: " << lis_iterations
-		<< ", residual: " << lis_residual << "\n";
+	std::cout << "- Task 8: LIS bicgstab + ilu, iterations: " << lis_iterations << ", residual: " << lis_residual << "\n";
 
 	// Task 9
 	VectorXd x = read_mtx_vector_lis(x_lis_path);
@@ -312,11 +303,12 @@ int main() {
 
 	// Task 10
 	MatrixXd ed2(3, 3);
-	// ed1 << 0, -1, 0, -1, 4, -1, 0, -1, 0; // OLD ONE
-	ed2 << -1, 0, 1, -2, 0, 2, -1, 0, 1; // CORRECT ONE
+	ed2 << -1, 0, 1, -2, 0, 2, -1, 0, 1; 
 
 	auto matrix_ed2 = build_convolution_matrix(ed2, input_image_vec.size(), cols);
 	std::cout << "- Task 10: symmetric: " << matrix_ed2.isApprox(matrix_ed2.transpose()) << "\n";
+	std::cout << "- Task 10: nnz(ed2) = " << matrix_av1.nonZeros() << "\n";
+	
 
 	// Task 11
 	auto edge_detected_original = matrix_ed2 * input_image_vec;
@@ -330,13 +322,13 @@ int main() {
 	Eigen::SparseMatrix<double> matrix_task12 = 4.0 * identity + matrix_ed2;
 
 	// CG needs A SPD, but 4I + A3 is never symmetric.
-	Eigen::SparseMatrix<double> ed2_sum = matrix_ed2 + Eigen::SparseMatrix<double>(matrix_ed2.transpose());
-	std::cout << "- Task 12: 4I + A3 symmetric: "
-		<< matrix_task12.isApprox(matrix_task12.transpose()) << " -> not SPD, no CG\n";
-
+	std::cout << "- Task 12: 4I + A3 symmetric: " << matrix_task12.isApprox(matrix_task12.transpose()) << " -> not SPD, no CG\n";
+	
 	auto [y, eigen_iterations, eigen_residual] = solve_eigen_bicgstab(matrix_task12, noisy_image_vec, 1e-10);
-	std::cout << "Eigen bicgstab, iterations: " << eigen_iterations
-		<< ", residual: " << eigen_residual << "\n";
+	std::cout << "- Task 12: Eigen bicgstab, iterations: " << eigen_iterations << ", residual: " << eigen_residual << "\n";
+	// With the default preconditioner it does more iterations but in the end it is faster because of the reduced 
+
+
 
 	constexpr auto y_mtx_path = "./artifacts/y.mtx";
 	Eigen::saveMarketVector(y, y_mtx_path);
