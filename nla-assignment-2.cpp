@@ -15,7 +15,7 @@ using Eigen::MatrixXd;
 using Eigen::VectorXd;
 using RowMatrixXd = Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>;
 
-// COMPILE WITH `g++ -O2 -I -I${mkEigenInc} nla-assignment-final.cpp -o challenge2`
+// COMPILE WITH `g++ -O2 -I${mkEigenInc} nla-assignment-2.cpp -o challenge2`
 // RUN WITH `./challenge2`
 
 MatrixXd compute_C(const MatrixXd &U, const int k) {
@@ -52,7 +52,6 @@ RowMatrixXd load_image(const char *path) {
 
 	auto *image = stbi_load(path, &x, &y, &channels, desired_channels);
 
-	// stbi_load returns desired_channels (= 1) values per pixel
 	RowMatrixXd img(y, x);
 	for (int i = 0; i < y; i++) {
 		for (int j = 0; j < x; j++) {
@@ -86,20 +85,17 @@ int main() {
 	std::cout << "- Task 1: norm of A^T A " << simm_A.norm() << "\n";
 
 	// Task 2
-	// A^T A is symmetric -> SelfAdjointEigenSolver. Eigenvalues come out in increasing order.
 	Eigen::SelfAdjointEigenSolver<MatrixXd> eigensolver(simm_A);
 	VectorXd eigenvalues = eigensolver.eigenvalues();
 	const auto n_eig = eigenvalues.size();
 
 	std::cout << "- Task 2: The two biggest eigenvalues of A^T A are " << eigenvalues[n_eig - 1] << "\t" << eigenvalues[n_eig - 2] << std::endl;
 
-	// The singular values of A are the square roots of the eigenvalues of A^T A
-	std::cout << "- Task 2: The two biggest singular values of A are " << std::sqrt(eigenvalues[n_eig - 1]) << "\t" << std::sqrt(eigenvalues[n_eig - 2]) << std::endl;
+	std::cout << "----------The two biggest singular values of A are " << std::sqrt(eigenvalues[n_eig - 1]) << "\t" << std::sqrt(eigenvalues[n_eig - 2]) << std::endl;
 
 	// Task 3
-	// Copy simm_A.mtx into the LIS test folder, then run the power method:
 	// mpirun -n 4 ./eigen1 simm_A.mtx eigvec.txt hist.txt -e pi -etol 1.0e-10
-	// -> eigenvalue = 1.200286e+09 in 10 iterations, in agreement with Task 2
+	// -> eigenvalue = 1.200286e+09 in 10 iterations
 	Eigen::saveMarket(simm_A, "simm_A.mtx");
 
 	// Task 4
@@ -130,7 +126,6 @@ int main() {
 	save_image(compressed_90, "compressed_90.png");
 
 	// Task 8
-	// 400x400 checkerboard, 10x10 tiles of 40 pixels each
 	const int board_size = 400;
 	const int square_size = 40;
 	RowMatrixXd checkerboard = RowMatrixXd::Zero(board_size, board_size);
@@ -146,7 +141,6 @@ int main() {
 	std::cout << "- Task 8: Norm of the checkerboard: " << checkerboard.norm() << std::endl;
 
 	// Task 9
-	// Random gives values in [-1, 1], so 60 * Random is in [-60, 60]
 	RowMatrixXd noise = 60.0 * RowMatrixXd::Random(board_size, board_size);
 	RowMatrixXd noisy_checkerboard = checkerboard + noise;
 	save_image(noisy_checkerboard, "noisy_checkerboard.png");
@@ -158,6 +152,8 @@ int main() {
 	std::cout << "- Task 10: The two biggest singular values are " << singular_values_noisy[0] << "\t" << singular_values_noisy[1] << std::endl;
 
 	// Task 11
+	MatrixXd c_2 = compute_C(svd_noisy.matrixU(), 2);
+	MatrixXd d_2 = compute_D(svd_noisy.matrixV(), singular_values_noisy, 2);
 	MatrixXd c_6 = compute_C(svd_noisy.matrixU(), 6);
 	MatrixXd d_6 = compute_D(svd_noisy.matrixV(), singular_values_noisy, 6);
 	MatrixXd c_12 = compute_C(svd_noisy.matrixU(), 12);
@@ -167,8 +163,7 @@ int main() {
 	std::cout << "- Task 11: k = 12 -> C is " << c_12.rows() << "x" << c_12.cols() << ", D is " << d_12.rows() << "x" << d_12.cols() << std::endl;
 
 	// Task 12
-	MatrixXd c_2 = compute_C(svd_noisy.matrixU(), 2);
-	MatrixXd d_2 = compute_D(svd_noisy.matrixV(), singular_values_noisy, 2);
+	
 	MatrixXd compressed_2 = compressed_matrix(c_2,d_2);
 	MatrixXd compressed_6 = compressed_matrix(c_6, d_6);
 	MatrixXd compressed_12 = compressed_matrix(c_12, d_12);
@@ -177,16 +172,12 @@ int main() {
 	save_image(compressed_6, "compressed_checkerboard_6.png");
 	save_image(compressed_12, "compressed_checkerboard_12.png");
 
-	// Task 13
-	// The checkerboard has rank 2, so all of its information is in the first two singular values,
-	// while the noise is spread over all the singular values with a much smaller magnitude.
-	// Keeping only the first k terms throws away most of the noise: the compressed images are much
-	// closer to the original checkerboard than the noisy one. k = 6 keeps less noise than k = 12.
-	std::cout << "- Task 13: Error w.r.t. the original checkerboard (Frobenius norm)" << std::endl;
+	// Task 13 - Helper
+	std::cout << "- Task 13: Error with the original checkerboard" << std::endl;
 	std::cout << "\tnoisy: " << (noisy_checkerboard - checkerboard).norm() << std::endl;
+	std::cout << "\tk = 2: " << (compressed_2 - checkerboard).norm() << std::endl;
 	std::cout << "\tk = 6: " << (compressed_6 - checkerboard).norm() << std::endl;
 	std::cout << "\tk = 12: " << (compressed_12 - checkerboard).norm() << std::endl;
-	std::cout << "\tk = 2: " << (compressed_2 - checkerboard).norm() << std::endl;
 
 	return 0;
 }
